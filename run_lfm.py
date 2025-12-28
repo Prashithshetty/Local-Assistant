@@ -6,6 +6,13 @@ import os
 import json
 from pathlib import Path
 
+# Import CLI animations
+from cli_animations import (
+    listening, thinking, speaking, loading,
+    print_banner, print_status, print_response_header, print_separator,
+    print_instructions, WaitingForInput, Colors
+)
+
 # Parameters
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 MODEL_ID = os.path.join(SCRIPT_DIR, "models", "LFM2-Audio-1.5B")
@@ -89,47 +96,55 @@ def load_model_with_offloading(model_path: str, max_gpu_memory_gb: float = 5.0):
     return model
 
 def record_audio(duration, sample_rate):
-    """Records audio from the microphone."""
-    print(f"Recording for {duration} seconds...", flush=True)
-    recording = sd.rec(int(duration * sample_rate), samplerate=sample_rate, channels=CHANNELS, dtype='float32')
-    sd.wait()
-    print("Recording stopped.", flush=True)
+    """Records audio from the microphone with animated feedback."""
+    with listening(duration):
+        recording = sd.rec(int(duration * sample_rate), samplerate=sample_rate, channels=CHANNELS, dtype='float32')
+        sd.wait()
+    print_status("Recording captured!", "success")
     return recording.flatten()
 
 def play_audio(audio_data, sample_rate):
-    """Plays audio data."""
-    print("Playing response...", flush=True)
-    sd.play(audio_data, sample_rate)
-    sd.wait()
+    """Plays audio data with animated feedback."""
+    with speaking():
+        sd.play(audio_data, sample_rate)
+        sd.wait()
+    print_status("Playback complete!", "audio")
 
 def main():
-    print(f"Loading model with GPU/CPU offloading from: {MODEL_ID}...")
+    print_banner()
+    print_status(f"Model path: {MODEL_ID}", "info")
     
     if not os.path.exists(MODEL_ID):
-        print(f"Error: Model directory not found at {MODEL_ID}")
+        print_status(f"Model directory not found at {MODEL_ID}", "error")
         return
 
     try:
-        # Load model with offloading - reserve some GPU memory for other operations
-        model = load_model_with_offloading(MODEL_ID, max_gpu_memory_gb=4.5)
-        
-        # Processor on GPU for fast audio processing
-        processor = LFM2AudioProcessor.from_pretrained(MODEL_ID, device="cuda")
+        with loading("Loading LFM-2 Audio Model") as loader:
+            loader.set_progress(10, "Initializing...")
+            # Load model with offloading - reserve some GPU memory for other operations
+            model = load_model_with_offloading(MODEL_ID, max_gpu_memory_gb=4.5)
+            loader.set_progress(70, "Loading processor...")
+            # Processor on GPU for fast audio processing
+            processor = LFM2AudioProcessor.from_pretrained(MODEL_ID, device="cuda")
+            loader.set_progress(100, "Complete!")
     except Exception as e:
-        print(f"Error loading with offloading, falling back to CPU: {e}")
+        print_status(f"Error loading with offloading: {e}", "warning")
         import traceback
         traceback.print_exc()
         
         # Fallback to pure CPU
-        print("\nFalling back to CPU-only mode...")
-        model = LFM2AudioModel.from_pretrained(MODEL_ID, device="cpu")
-        processor = LFM2AudioProcessor.from_pretrained(MODEL_ID, device="cpu")
+        print_status("Falling back to CPU-only mode...", "warning")
+        with loading("Loading Model (CPU)") as loader:
+            loader.set_progress(20, "Loading model...")
+            model = LFM2AudioModel.from_pretrained(MODEL_ID, device="cpu")
+            loader.set_progress(60, "Loading processor...")
+            processor = LFM2AudioProcessor.from_pretrained(MODEL_ID, device="cpu")
+            loader.set_progress(100, "Complete!")
 
     mimi = processor.mimi
     
-    print("Model loaded successfully!")
-    print("Instructions: The script will record for 5 seconds, process, and play back the response.")
-    print("Press Ctrl+C to exit.")
+    print_status("Model loaded successfully!", "success")
+    print_instructions(RECORD_DURATION)
 
     # Persistent chat state
     chat = ChatState(processor, codebooks=model.codebooks)
@@ -141,7 +156,13 @@ def main():
 
     try:
         while True:
-            input("Press Enter to start recording (or Ctrl+C to exit): ")
+            # Animated waiting prompt
+            wait_anim = WaitingForInput()
+            wait_anim.start()
+            try:
+                input()
+            finally:
+                wait_anim.stop()
             
             input_audio = record_audio(RECORD_DURATION, SAMPLE_RATE)
             audio_tensor = torch.from_numpy(input_audio).unsqueeze(0).float()
@@ -152,7 +173,7 @@ def main():
             
             chat.new_turn("assistant")
             
-            print("Generating response...", flush=True)
+            print_status("Processing your input...", "info")
             
             out_text = []
             out_audio = []
@@ -160,6 +181,7 @@ def main():
             audio_chunks = []
             
             with torch.no_grad(), mimi.streaming(1):
+                print_response_header()
                 for t in model.generate_interleaved(
                     **chat,
                     max_new_tokens=1024,
@@ -178,6 +200,9 @@ def main():
                         wav_chunk = mimi.decode(t[None, :, None])[0]
                         audio_chunks.append(wav_chunk)
             
+            # Print response header before text output
+            print_response_header()
+            
             print()
             
             if out_text and out_audio:
@@ -189,17 +214,22 @@ def main():
             
             chat.end_turn()
             
+            print()  # Newline after response text
+            
             if audio_chunks:
                 full_audio = torch.cat(audio_chunks, dim=-1)
                 output_audio = (full_audio.cpu().numpy() * 32767).astype(np.int16)
                 play_audio(output_audio.flatten(), 24000)
             else:
-                print("No audio generated.")
+                print_status("No audio generated.", "warning")
+            
+            print_separator()
 
     except KeyboardInterrupt:
-        print("\nExiting...")
+        print()
+        print_status("Goodbye!", "info")
     except Exception as e:
-        print(f"\nAn error occurred: {e}")
+        print_status(f"An error occurred: {e}", "error")
         import traceback
         traceback.print_exc()
 
