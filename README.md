@@ -1,33 +1,33 @@
-# 🎙️ Local-Assistant
+# Local-Assistant
 
 <p align="center">
   <img src="https://img.shields.io/badge/python-3.9+-blue.svg" alt="Python 3.9+">
   <img src="https://img.shields.io/badge/license-GPL--3.0-green.svg" alt="GPL-3.0">
-  <img src="https://img.shields.io/badge/model-LFM2--Audio--1.5B-purple.svg" alt="LFM2-Audio">
+  <img src="https://img.shields.io/badge/model-Qwen2.5--3B-purple.svg" alt="Qwen2.5-3B">
 </p>
 
-A **voice-interactive AI assistant** powered by the LFM2-Audio model. Speak to the assistant, and it responds with synthesized speech in real-time using streaming audio generation.
+A **voice-interactive AI assistant** for Linux. Speak naturally, and it responds with synthesized speech — powered by Whisper, Qwen2.5-3B, and Piper TTS.
 
-## ✨ Features
+## Features
 
-- 🎤 **Voice Recording** — Record 5-second audio clips directly from your microphone
-- 🧠 **LFM2-Audio Model** — Uses Liquid's state-of-the-art 1.5B audio language model
-- ⚡ **GPU/CPU Offloading** — Automatically balances model across GPU and CPU memory
-- 🔊 **Streaming Audio** — Real-time audio generation with low latency
-- 💬 **Conversation Memory** — Maintains context across multiple turns
+- **Voice Input** — Record audio directly from your microphone
+- **Qwen2.5-3B** — Local LLM with 4-bit quantization for efficient inference
+- **Piper TTS** — Fast, high-quality text-to-speech
+- **Tool Calling** — Execute system commands, open apps, search files, browse the web
+- **Conversation Memory** — Maintains context with automatic history compression
 
-## 📋 Requirements
+## Requirements
 
 ### Hardware
-- **RAM**: 16GB minimum, 32GB recommended
-- **GPU**: NVIDIA GPU with 4GB+ VRAM (optional, falls back to CPU)
+- **RAM**: 16GB minimum
+- **GPU**: NVIDIA GPU with 4GB+ VRAM (recommended)
 
 ### Software
 - Python 3.9+
 - CUDA Toolkit (for GPU acceleration)
 - PortAudio (for audio I/O)
 
-## 🚀 Installation
+## Installation
 
 ```bash
 # Clone the repository
@@ -36,59 +36,72 @@ cd Local-Assistant
 
 # Create virtual environment
 python -m venv .venv
-source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+source .venv/bin/activate
 
 # Install dependencies
-pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu118
-pip install liquid-audio accelerate sounddevice numpy
-
-# Download the LFM2-Audio model to models/ directory
-# (Model files should be placed in models/LFM2-Audio-1.5B/)
+pip install -r requirements.txt
 ```
 
-## 💻 Usage
+## Usage
 
 ```bash
-python run_lfm.py
+python run_qwen_assistant.py
 ```
 
 **How it works:**
 1. Press **Enter** to start recording
-2. Speak for **5 seconds** (recording stops automatically)
-3. Wait for the AI to generate a response
+2. Speak your query
+3. Wait for the AI to process and respond
 4. Listen to the audio response
 5. Repeat! Press **Ctrl+C** to exit
 
-## ⚙️ Configuration
+## Available Tools
 
-Edit the constants at the top of `run_lfm.py` to customize:
+| Tool | Description |
+|------|-------------|
+| `system_info` | Get system information (CPU, RAM, GPU) |
+| `open_app` | Open applications |
+| `find_file` | Search for files |
+| `open_file` | Open files with default application |
+| `web_search` | Search the web |
+| `run_command` | Execute shell commands |
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `MODEL_ID` | `models/LFM2-Audio-1.5B` | Path to model |
-| `SAMPLE_RATE` | `16000` | Input audio sample rate |
-| `RECORD_DURATION` | `5` | Recording length (seconds) |
-| `max_gpu_memory_gb` | `4.5` | GPU memory limit (in `main()`) |
-
-## 🏗️ Project Structure
+## Project Structure
 
 ```
 Local-Assistant/
-├── run_lfm.py          # Main application
-├── models/
-│   └── LFM2-Audio-1.5B/  # Model files
-├── LICENSE             # GPL-3.0 License
-└── README.md           # This file
+├── run_qwen_assistant.py   # Main application
+├── search_utils.py         # Web search utilities
+├── cli_animations.py       # CLI animations
+├── tools/                  # Tool implementations
+│   ├── system_tools.py
+│   ├── app_tools.py
+│   ├── file_tools.py
+│   ├── web_tools.py
+│   └── tool_registry.py
+├── models/                 # Model files (download separately)
+└── requirements.txt
 ```
 
-## 📝 License
+## Future Scope
+
+This project aims to become **the native AI assistant for Linux machines** — just like Copilot on Windows, Siri on macOS/iOS, and Google Assistant on Android. The goal is to provide Linux users with a fully local, privacy-respecting, voice-controlled assistant that deeply integrates with the Linux desktop environment.
+
+Planned features:
+- Desktop environment integration (notifications, system controls)
+- Vision capabilities with VLM models
+- Plugin system for community extensions
+- Multi-language support
+- Wake word detection for hands-free activation
+
+## License
 
 This project is licensed under the **GNU General Public License v3.0** — see the [LICENSE](LICENSE) file for details.
 
-## 👤 Author
+## Author
 
 **Prashith Shetty** — [@Prashithshetty](https://github.com/Prashithshetty)
 
 ---
 
-<p align="center">Made with ❤️ using <a href="https://www.liquid.ai/">Liquid AI</a>'s LFM2-Audio model</p>
+<p align="center">Made with care for the Linux community</p>
