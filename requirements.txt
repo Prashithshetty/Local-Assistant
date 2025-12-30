@@ -1,0 +1,21 @@
+# Mini-Omni2 Assistant Dependencies
+torch>=2.3.0
+torchaudio>=2.3.0
+snac>=1.2.0
+soundfile>=0.12.1
+openai-whisper
+tiktoken
+sounddevice
+numpy
+scipy
+librosa
+lightning
+einops
+pydub
+fire
+duckduckgo-search
+accelerate
+transformers
+piper-tts
+playwright
+bitsandbytes>=0.41.0

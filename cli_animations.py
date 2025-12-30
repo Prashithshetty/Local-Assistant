@@ -327,6 +327,7 @@ class LoadingAnimation(AnimatedState):
             time.sleep(0.1)
 
 
+
 class WaitingForInput(AnimatedState):
     """Pulsing ready indicator."""
     
@@ -367,6 +368,8 @@ class WaitingForInput(AnimatedState):
             
             phase += 1
             time.sleep(0.15)
+
+
 
 
 class PulseAnimation(AnimatedState):
@@ -511,6 +514,7 @@ def print_instructions(record_duration: int = 5):
   {Colors.WHITE}>{Colors.RESET} Press {Colors.BOLD}CTRL+C{Colors.RESET} to exit
 {Colors.DIM}{'─' * 40}{Colors.RESET}
 """)
+
 
 
 # Demo function to test animations
