@@ -19,3 +19,5 @@ transformers
 piper-tts
 playwright
 bitsandbytes>=0.41.0
+psutil>=5.9.0
+GPUtil>=1.4.0

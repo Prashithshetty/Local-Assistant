@@ -27,7 +27,7 @@ from cli_animations import (
     print_banner, print_status, print_response_header, print_separator,
     print_instructions, WaitingForInput, Colors
 )
-from search_utils import perform_search
+from tools import get_all_tools, execute_tool
 
 QWEN_MODEL = os.path.join(SCRIPT_DIR, "models", "qwen2.5-3b-instruct")
 XTTS_MODEL = os.path.join(SCRIPT_DIR, "models", "XTTS-v2")
@@ -41,24 +41,8 @@ QUANTIZATION_CONFIG = BitsAndBytesConfig(
     bnb_4bit_quant_type="nf4"
 )
 
-TOOLS = [{
-    "type": "function",
-    "function": {
-        "name": "web_search",
-        "description": "Search the internet for current information like weather, news, sports, or stocks.",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "query": {"type": "string", "description": "Search query"},
-                "timelimit": {
-                    "type": "string",
-                    "description": "Time limit for search results (d: day, w: week, m: month, y: year). Use 'd' or 'w' for recent news."
-                }
-            },
-            "required": ["query"]
-        }
-    }
-}]
+# Get tools dynamically from registry
+TOOLS = get_all_tools()
 
 
 def record_audio(duration, sample_rate):
@@ -78,15 +62,7 @@ def play_audio(audio_data, sample_rate=24000):
     print_status("Playback complete!", "audio")
 
 
-def execute_tool(tool_name, tool_args):
-    if tool_name == "web_search":
-        query = tool_args.get("query", "")
-        timelimit = tool_args.get("timelimit")
-        print_status(f"Searching: {query} (Time: {timelimit or 'All'})", "info")
-        results = perform_search(query, timelimit=timelimit)
-        print_status("Search complete!", "success")
-        return results
-    return "Unknown tool"
+# Tool execution is now handled by tools/tool_registry.py
 
 
 PIPER_MODEL_PATH = os.path.join(SCRIPT_DIR, "models", "piper", "en_US-amy-medium.onnx")
@@ -158,12 +134,15 @@ class SpeechAssistant:
         current_time_str = datetime.datetime.now().strftime("%A, %B %d, %Y %I:%M %p")
         
         system_prompt = (
-            "You are a friendly voice assistant. Your responses will be spoken aloud using text to speech, "
+            "You are a friendly voice assistant with full access to the user's system. "
+            "Your responses will be spoken aloud using text to speech, "
             "so write in a natural conversational tone. Never use asterisks, bullet points, numbered lists, "
             "markdown, or special symbols. Avoid abbreviations and write numbers as words when it sounds more natural. "
             "Keep your answers brief and to the point, like you are having a casual conversation. "
             f"The current date and time is {current_time_str}. User location is likely India based on timezone. "
-            "When you need current information like weather, news, or sports scores, use the web search tool."
+            "You have access to many tools: system stats (CPU, RAM, disk, GPU), file operations (find, list, read files), "
+            "network info (IP, WiFi, connectivity), app control (open apps, files, URLs), and web search. "
+            "Use the appropriate tool when the user asks about their system, files, or needs current information."
         )
         
         messages = [
