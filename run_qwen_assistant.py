@@ -73,6 +73,9 @@ class SpeechAssistant:
         self.qwen_model = None
         self.qwen_tokenizer = None
         self.piper_voice = None
+        # Conversation memory - keeps last N messages for context
+        self.conversation_history = []
+        self.max_history = 10  # 5 user + 5 assistant turns
         
     def load_models(self):
         """Load all models in parallel for faster startup."""
@@ -134,27 +137,25 @@ class SpeechAssistant:
         current_time_str = datetime.datetime.now().strftime("%A, %B %d, %Y %I:%M %p")
         
         system_prompt = (
-            "You are a friendly voice assistant with full access to the user's system. "
-            "Your responses will be spoken aloud using text to speech, "
-            "so write in a natural conversational tone. Never use asterisks, bullet points, numbered lists, "
-            "markdown, or special symbols. Avoid abbreviations and write numbers as words when it sounds more natural. "
-            "Keep your answers brief and to the point, like you are having a casual conversation. "
-            f"The current date and time is {current_time_str}. User location is likely India based on timezone. "
-            "You have access to many tools: system stats (CPU, RAM, disk, GPU), file operations (find, list, read files), "
-            "network info (IP, WiFi, connectivity), app control (open apps, files, URLs), and web search. "
-            "Use the appropriate tool when the user asks about their system, files, or needs current information."
+            "You are a voice assistant. CRITICAL RULES:\n"
+            "1. To DO anything (open files, search, etc), you MUST call a tool. NEVER just say 'I'll open...' - CALL THE TOOL.\n"
+            "2. When user says 'open the 4th one' after finding files, call find_and_open_file with pattern='*.pdf' and which=4.\n"
+            "3. Wrap spoken content in <speak>...</speak> tags. File lists go outside tags.\n"
+            "4. Keep spoken responses to 1-2 sentences.\n"
+            f"Current: {current_time_str}. Location: India.\n"
+            "TOOLS: find_and_open_file (find AND open), find_files (list only), get_system_stats, open_application, web_search."
         )
         
-        messages = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_text}
-        ]
+        # Build messages with history for context
+        messages = [{"role": "system", "content": system_prompt}]
+        messages.extend(self.conversation_history)  # Add past conversation
+        messages.append({"role": "user", "content": user_text})
         
         text = self.qwen_tokenizer.apply_chat_template(messages, tools=TOOLS, add_generation_prompt=True, tokenize=False)
         inputs = self.qwen_tokenizer(text, return_tensors="pt").to(self.qwen_model.device)
         
         with torch.no_grad():
-            outputs = self.qwen_model.generate(**inputs, max_new_tokens=256, temperature=0.7, do_sample=True, pad_token_id=self.qwen_tokenizer.pad_token_id)
+            outputs = self.qwen_model.generate(**inputs, max_new_tokens=256, temperature=0.3, do_sample=True, pad_token_id=self.qwen_tokenizer.pad_token_id)
         
         response = self.qwen_tokenizer.decode(outputs[0][inputs["input_ids"].shape[1]:], skip_special_tokens=False)
         
@@ -167,6 +168,7 @@ class SpeechAssistant:
                 
                 tool_name = tool_data.get("name", "")
                 tool_args = tool_data.get("arguments", {})
+                print_status(f"Calling tool: {tool_name}", "info")
                 tool_result = execute_tool(tool_name, tool_args)
                 
                 messages.append({"role": "assistant", "content": response})
@@ -176,14 +178,27 @@ class SpeechAssistant:
                 inputs = self.qwen_tokenizer(text, return_tensors="pt").to(self.qwen_model.device)
                 
                 with torch.no_grad():
-                    outputs = self.qwen_model.generate(**inputs, max_new_tokens=256, temperature=0.7, do_sample=True, pad_token_id=self.qwen_tokenizer.pad_token_id)
+                    outputs = self.qwen_model.generate(**inputs, max_new_tokens=256, temperature=0.3, do_sample=True, pad_token_id=self.qwen_tokenizer.pad_token_id)
                 
                 response = self.qwen_tokenizer.decode(outputs[0][inputs["input_ids"].shape[1]:], skip_special_tokens=True)
+                
+                # Store tool result to display later
+                self._last_tool_result = tool_result
             except Exception as e:
                 print_status(f"Tool error: {e}", "warning")
                 response = response.split("<tool_call>")[0].strip()
+                self._last_tool_result = None
         else:
             response = response.replace("<|im_end|>", "").strip()
+            self._last_tool_result = None
+        
+        # Update conversation history
+        self.conversation_history.append({"role": "user", "content": user_text})
+        self.conversation_history.append({"role": "assistant", "content": response})
+        
+        # Trim history if too long
+        if len(self.conversation_history) > self.max_history:
+            self.conversation_history = self.conversation_history[-self.max_history:]
         
         return response
 
@@ -241,10 +256,23 @@ def main():
             print_response_header()
             with thinking():
                 response = assistant.generate_response(user_text)
-            print(f"{Colors.BOLD}Assistant:{Colors.RESET} {response}")
+            
+            # Display tool result (file list, etc.) if any
+            if hasattr(assistant, '_last_tool_result') and assistant._last_tool_result:
+                print(f"{Colors.CYAN}{assistant._last_tool_result}{Colors.RESET}")
+                print()
+            
+            # Display the response (clean up speak tags for display)
+            display_response = response.replace('<speak>', '').replace('</speak>', '')
+            print(f"{Colors.BOLD}Assistant:{Colors.RESET} {display_response}")
+            
+            # Extract speech content from <speak> tags, or use full response
+            import re
+            speak_match = re.search(r'<speak>(.*?)</speak>', response, re.DOTALL)
+            speech_text = speak_match.group(1).strip() if speak_match else response
             
             output_path = os.path.join(SCRIPT_DIR, "response.wav")
-            if assistant.speak(response, output_path):
+            if assistant.speak(speech_text, output_path):
                 audio_data, sr = sf.read(output_path)
                 play_audio(audio_data.astype(np.float32), sr)
                 os.remove(output_path)

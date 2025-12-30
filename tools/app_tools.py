@@ -91,10 +91,24 @@ def open_application(app_name: str) -> str:
 
 def open_file(path: str) -> str:
     """Open a file with its default application."""
-    target_path = os.path.expanduser(path)
+    HOME_DIR = os.path.expanduser("~")
+    
+    # Handle various path formats the LLM might pass
+    target_path = path
+    
+    # Replace common LLM hallucinations
+    target_path = target_path.replace('/home/yourname/', '~/')
+    target_path = target_path.replace('/home/username/', '~/')
+    
+    # Expand ~ to actual home directory
+    target_path = os.path.expanduser(target_path)
+    
+    # If it's a relative path (like "Downloads/file.pdf"), prepend home
+    if not os.path.isabs(target_path):
+        target_path = os.path.join(HOME_DIR, target_path)
     
     if not os.path.exists(target_path):
-        return f"File not found: {path}"
+        return f"File not found: {path}. Hint: Use the exact path from find_files (e.g., ~/Downloads/file.pdf)"
     
     try:
         subprocess.Popen(
@@ -103,7 +117,7 @@ def open_file(path: str) -> str:
             stderr=subprocess.DEVNULL,
             start_new_session=True
         )
-        return f"Opened {os.path.basename(path)} with default application."
+        return f"Successfully opened {os.path.basename(path)}."
     except Exception as e:
         return f"Failed to open file: {e}"
 

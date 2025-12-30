@@ -20,8 +20,9 @@ EXCLUDED_DIRS = {'.git', '.venv', 'node_modules', '__pycache__', '.cache', '.loc
 
 
 def find_files(pattern: str, directory: str = None, file_type: str = None) -> str:
-    """Find files matching a pattern."""
-    search_dir = directory or HOME_DIR
+    """Find files matching a pattern. Returns TTS-friendly output."""
+    # Default to home directory. Also treat '.' as home (LLM often passes '.')
+    search_dir = directory if directory and directory != '.' else HOME_DIR
     search_dir = os.path.expanduser(search_dir)
     
     if not os.path.isdir(search_dir):
@@ -50,17 +51,18 @@ def find_files(pattern: str, directory: str = None, file_type: str = None) -> st
         pass
     
     if not results:
-        return f"No files found matching '{pattern}' in {search_dir}"
+        return f"No files found matching '{pattern}'."
     
-    result = f"Found {len(results)} items matching '{pattern}':\n"
-    for path in results:
-        # Show relative path if in home
-        display_path = path.replace(HOME_DIR, "~") if path.startswith(HOME_DIR) else path
-        result += f"  {display_path}\n"
+    # Build simple, TTS-friendly output
+    result = f"Found {len(results)} files:\n"
     
-    if len(results) >= MAX_RESULTS:
-        result += f"  ... (showing first {MAX_RESULTS} results)"
+    for i, path in enumerate(results, 1):
+        filename = os.path.basename(path)
+        folder = os.path.basename(os.path.dirname(path))
+        # Simple format: "1. filename in folder"
+        result += f"{i}. {filename} in {folder}\n"
     
+    result += "Say 'open the first one' or use find_and_open_file tool."
     return result.strip()
 
 
@@ -228,13 +230,77 @@ def _format_size(size_bytes: int) -> str:
     return f"{size_bytes:.1f}TB"
 
 
+def find_and_open_file(pattern: str, which: int = 1, directory: str = None) -> str:
+    """Find files and open the Nth matching one."""
+    import subprocess
+    
+    # Default to home directory, treat '.' as home
+    search_dir = directory if directory and directory != '.' else HOME_DIR
+    search_dir = os.path.expanduser(search_dir)
+    
+    if not os.path.isdir(search_dir):
+        return f"Directory not found: {search_dir}"
+    
+    results = []
+    search_pattern = f"**/*{pattern}*" if not pattern.startswith("*") else f"**/{pattern}"
+    
+    try:
+        for path in Path(search_dir).glob(search_pattern):
+            if any(excluded in str(path) for excluded in EXCLUDED_DIRS):
+                continue
+            if path.is_file():
+                results.append(str(path))
+                if len(results) >= MAX_RESULTS:
+                    break
+    except PermissionError:
+        pass
+    
+    if not results:
+        return f"No files found matching '{pattern}'."
+    
+    # Validate 'which' index
+    if which < 1 or which > len(results):
+        return f"Found {len(results)} files, but you asked for #{which}. Please choose 1 to {len(results)}."
+    
+    # Open the requested file
+    target_file = results[which - 1]  # Convert to 0-indexed
+    filename = os.path.basename(target_file)
+    folder = os.path.basename(os.path.dirname(target_file))
+    
+    try:
+        subprocess.Popen(
+            ['xdg-open', target_file],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True
+        )
+        return f"Opened {filename} from {folder} folder."
+    except Exception as e:
+        return f"Failed to open file: {e}"
+
+
 # ============================================================
 # Register all file tools
 # ============================================================
 
 register_tool(
+    name="find_and_open_file",
+    description="Find files matching a pattern and open the Nth one. Use this when user says 'find and open' or 'open a PDF'. Example: find PDFs and open the 4th one.",
+    parameters={
+        "type": "object",
+        "properties": {
+            "pattern": {"type": "string", "description": "File pattern (e.g., '*.pdf', 'report', '*.txt')"},
+            "which": {"type": "integer", "description": "Which file to open (1=first, 2=second, etc). Default: 1"},
+            "directory": {"type": "string", "description": "Directory to search (default: home)"}
+        },
+        "required": ["pattern"]
+    },
+    func=find_and_open_file
+)
+
+register_tool(
     name="find_files",
-    description="Search for files by name pattern. Supports wildcards like *.pdf or report*.",
+    description="Search for files by name pattern. Use this to LIST files without opening. For finding AND opening, use find_and_open_file instead.",
     parameters={
         "type": "object",
         "properties": {
