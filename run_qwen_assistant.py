@@ -75,7 +75,8 @@ class SpeechAssistant:
         self.piper_voice = None
         # Conversation memory - keeps last N messages for context
         self.conversation_history = []
-        self.max_history = 10  # 5 user + 5 assistant turns
+        self.max_history = 10  # 5 turns (user + assistant pairs)
+        self.compressed_summary = None  # Stores compressed history summary
         
     def load_models(self):
         """Load all models in parallel for faster startup."""
@@ -137,7 +138,7 @@ class SpeechAssistant:
         current_time_str = datetime.datetime.now().strftime("%A, %B %d, %Y %I:%M %p")
         
         system_prompt = (
-            "You are a locally running voice assistant. Your goal is to be helpful, concise, and accurate.\n"
+            "You are a locally running voice assistant. Your goal is to be helpful, concise, humanlike and accurate, dont use symbols like *, # or anyother.\n"
             "CRITICAL PROTOCOLS:\n"
             "1. **TOOL USAGE**: To perform ANY action (SEARCHing, OPENing files, checking stats), you MUST generate a <tool_call> block. Do not just describe what you will do.\n"
             "2. **VOICE OUTPUT**: You are speaking to the user. Wrap ALL spoken text in <speak>...</speak> tags. Keep spoken text BRIEF (1-2 sentences). Do not read out long lists or technical IDs.\n"
@@ -151,6 +152,11 @@ class SpeechAssistant:
         
         # Build messages with history for context
         messages = [{"role": "system", "content": system_prompt}]
+        
+        # Add compressed summary if it exists
+        if self.compressed_summary:
+            messages.append(self.compressed_summary)
+        
         messages.extend(self.conversation_history)  # Add past conversation
         messages.append({"role": "user", "content": user_text})
         
@@ -199,11 +205,71 @@ class SpeechAssistant:
         self.conversation_history.append({"role": "user", "content": user_text})
         self.conversation_history.append({"role": "assistant", "content": response})
         
-        # Trim history if too long
+        # Compress history if too long (keep 4 recent turns + compressed summary)
         if len(self.conversation_history) > self.max_history:
-            self.conversation_history = self.conversation_history[-self.max_history:]
+            self._compress_history()
         
         return response
+    
+    def _compress_history(self):
+        """Compress old conversation history into a summary."""
+        print(f"\n{Colors.YELLOW}[COMPRESSION] History exceeds limit ({len(self.conversation_history)} messages). Compressing...{Colors.RESET}")
+        
+        # Compress ALL messages, keep NONE
+        # This creates a complete reset: only summary remains
+        messages_to_compress = self.conversation_history
+        recent_messages = []  # Keep nothing, summary becomes the only context
+        
+        if not messages_to_compress:
+            print(f"{Colors.YELLOW}[COMPRESSION] No messages to compress, skipping.{Colors.RESET}\n")
+            return
+        
+        print(f"{Colors.YELLOW}[COMPRESSION] Compressing ALL {len(messages_to_compress)} messages into summary...{Colors.RESET}")
+        
+        # Build a summary prompt - use strict extraction to prevent hallucination
+        history_text = "\n".join([
+            f"{msg['role'].upper()}: {msg['content']}" 
+            for msg in messages_to_compress
+        ])
+        
+        # If there's already a compressed summary, include it in the compression
+        if self.compressed_summary:
+            history_text = f"{self.compressed_summary['content']}\n\n{history_text}"
+        
+        summary_prompt = (
+            "STRICT INSTRUCTION: Extract and list ONLY the factual information from this conversation. "
+            "Do NOT add any information that wasn't explicitly stated. "
+            "Do NOT make assumptions or creative interpretations. "
+            "Format: List each user question and assistant answer briefly.\n\n"
+            "CONVERSATION TO SUMMARIZE:\n"
+            f"{history_text}\n\n"
+            "FACTUAL SUMMARY (bullet points only):"
+        )
+        
+        # Use Qwen to generate summary with VERY low temperature to avoid creativity
+        inputs = self.qwen_tokenizer(summary_prompt, return_tensors="pt").to(self.qwen_model.device)
+        
+        with torch.no_grad():
+            outputs = self.qwen_model.generate(
+                **inputs, 
+                max_new_tokens=128, 
+                temperature=0.1,  # Very low temperature = more factual, less creative
+                do_sample=True, 
+                pad_token_id=self.qwen_tokenizer.pad_token_id
+            )
+        
+        summary = self.qwen_tokenizer.decode(
+            outputs[0][inputs["input_ids"].shape[1]:], 
+            skip_special_tokens=True
+        ).strip()
+        
+        print(f"{Colors.GREEN}[COMPRESSION] Summary generated:{Colors.RESET}")
+        print(f"{Colors.CYAN}{summary}{Colors.RESET}")
+        print(f"{Colors.GREEN}[COMPRESSION] History compressed! All messages replaced with summary. Ready for 4 new turns.{Colors.RESET}\n")
+        
+        # Replace ALL messages with summary
+        self.compressed_summary = {"role": "system", "content": f"Previous conversation summary: {summary}"}
+        self.conversation_history = recent_messages  # Empty list
 
     def speak(self, text, output_path):
         # Use Piper TTS
