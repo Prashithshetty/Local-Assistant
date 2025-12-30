@@ -42,6 +42,11 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
+**Note:** Models are downloaded automatically on first run. If you want to pre-download them:
+```bash
+python model_downloader.py
+```
+
 ## Usage
 
 ```bash
@@ -71,6 +76,7 @@ python run_qwen_assistant.py
 ```
 Local-Assistant/
 ├── run_qwen_assistant.py   # Main application
+├── model_downloader.py     # Auto-downloads required models
 ├── search_utils.py         # Web search utilities
 ├── cli_animations.py       # CLI animations
 ├── tools/                  # Tool implementations
@@ -79,7 +85,7 @@ Local-Assistant/
 │   ├── file_tools.py
 │   ├── web_tools.py
 │   └── tool_registry.py
-├── models/                 # Model files (download separately)
+├── models/                 # Model files (auto-downloaded)
 └── requirements.txt
 ```
 

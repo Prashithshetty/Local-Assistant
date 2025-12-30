@@ -28,6 +28,7 @@ from cli_animations import (
     print_instructions, WaitingForInput, Colors
 )
 from tools import get_all_tools, execute_tool
+from model_downloader import ensure_models_exist
 
 QWEN_MODEL = os.path.join(SCRIPT_DIR, "models", "qwen2.5-3b-instruct")
 XTTS_MODEL = os.path.join(SCRIPT_DIR, "models", "XTTS-v2")
@@ -295,6 +296,11 @@ class SpeechAssistant:
 
 def main():
     print_banner()
+    
+    # Auto-download models if they don't exist
+    if not ensure_models_exist():
+        print_status("Model download incomplete. Please check errors and try again.", "warning")
+        return
     
     assistant = SpeechAssistant()
     assistant.load_models()
