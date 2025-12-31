@@ -1,24 +1,98 @@
 """
-Web search tools - wraps existing search_utils.
+Web search tools - implements internet search functionality.
 """
 
 import logging
-import sys
-import os
+from typing import Optional
+from .tool_registry import register_tool
 
 logger = logging.getLogger("tools.web")
 
-# Import from parent directory's search_utils
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from .tool_registry import register_tool
-
+# Try to import DuckDuckGo search library
 try:
-    from search_utils import perform_search as _perform_search
-except ImportError as e:
-    logger.warning(f"Could not import search_utils: {e}")
-    def _perform_search(query, **kwargs):
-        return "Search module not available. Check search_utils.py installation."
+    from duckduckgo_search import DDGS
+except ImportError:
+    try:
+        from ddgs import DDGS
+    except ImportError:
+        logger.error("duckduckgo-search package not installed. Run: pip install duckduckgo-search")
+        DDGS = None
+
+
+def perform_search(
+    query: str, 
+    max_results: int = 5, 
+    timelimit: Optional[str] = None, 
+    region: str = "wt-wt"
+) -> str:
+    """
+    Performs a web search using DuckDuckGo (DDGS).
+    
+    Args:
+        query: The search query string.
+        max_results: Maximum number of results to return (default: 5).
+        timelimit: Time limit (d=day, w=week, m=month, y=year).
+        region: Region code (e.g., "wt-wt", "us-en").
+        
+    Returns:
+        A formatted string containing the search results.
+    """
+    if not DDGS:
+        return "Search unavailable: duckduckgo-search package not installed."
+    
+    if not query or not query.strip():
+        return "No search query provided."
+    
+    query = query.strip()
+    logger.info(f"Searching: '{query}' (timelimit={timelimit}, region={region})")
+    
+    results = []
+    
+    try:
+        # Primary search with provided parameters
+        with DDGS() as ddgs:
+            gen = ddgs.text(query, max_results=max_results, timelimit=timelimit, region=region)
+            results = list(gen) if gen else []
+        
+        # Fallback 1: If no results with timelimit, try without
+        if not results and timelimit:
+            logger.debug("No results with timelimit, retrying without...")
+            with DDGS() as ddgs:
+                gen = ddgs.text(query, max_results=max_results, region=region)
+                results = list(gen) if gen else []
+
+        # Fallback 2: If no results in current region, try us-en
+        if not results and region != "us-en":
+            logger.debug("No results in region, retrying with 'us-en'...")
+            with DDGS() as ddgs:
+                gen = ddgs.text(query, max_results=max_results, region="us-en")
+                results = list(gen) if gen else []
+
+        if not results:
+            return f"No search results found for: {query}"
+        
+        # Format results for TTS-friendly output
+        formatted_results = [f"Search results for: {query}\n"]
+        
+        for i, result in enumerate(results):
+            title = result.get("title", "").strip()
+            body = result.get("body", "").strip()
+            # href = result.get("href", "") # Link not needed for voice output usually
+            
+            if not title or not body:
+                continue
+            
+            # Truncate body if too long for TTS
+            if len(body) > 200:
+                body = body[:197] + "..."
+                
+            formatted_results.append(f"{i + 1}. {title}\n   {body}\n")
+            
+        return "\n".join(formatted_results)
+
+    except Exception as e:
+        logger.error(f"Search failed: {e}")
+        return f"Search failed: {str(e)}"
 
 
 def web_search(query: str, timelimit: str = None) -> str:
@@ -26,20 +100,13 @@ def web_search(query: str, timelimit: str = None) -> str:
     if not query or not query.strip():
         return "Please provide a search query."
     
-    query = query.strip()
-    
     # Validate timelimit if provided
     valid_timelimits = {'d', 'w', 'm', 'y', None}
     if timelimit and timelimit not in valid_timelimits:
         logger.debug(f"Invalid timelimit '{timelimit}', ignoring")
         timelimit = None
     
-    try:
-        result = _perform_search(query, timelimit=timelimit)
-        return result
-    except Exception as e:
-        logger.error(f"Web search failed: {e}")
-        return f"Search failed: {e}"
+    return perform_search(query, timelimit=timelimit)
 
 
 # ============================================================
@@ -63,4 +130,3 @@ register_tool(
     },
     func=web_search
 )
-
