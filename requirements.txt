@@ -1,13 +1,15 @@
 # Local-Assistant Dependencies
 torch>=2.0.0
 torchaudio>=2.0.0
-transformers
-accelerate
-bitsandbytes>=0.41.0
+llama-cpp-python>=0.2.90
+huggingface_hub
 openai-whisper
 sounddevice
-numpy
+numpy<2.4
 piper-tts
 duckduckgo-search
 psutil>=5.9.0
 GPUtil>=1.4.0
+soundfile
+kokoro>=0.9.4
+misaki[en]

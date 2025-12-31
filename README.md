@@ -11,21 +11,23 @@ A **voice-interactive AI assistant** for Linux. Speak naturally, and it responds
 ## Features
 
 - **Voice Input** — Record audio directly from your microphone
-- **Qwen2.5-3B** — Local LLM with 4-bit quantization for efficient inference
-- **Piper TTS** — Fast, high-quality text-to-speech
+- **Llama-3.2-3B** — Lightweight local LLM optimized for instruction following and tool calling
+- **Kokoro TTS** — High-quality, natural-sounding ~82M parameter text-to-speech
 - **Tool Calling** — Execute system commands, open apps, search files, browse the web
 - **Conversation Memory** — Maintains context with automatic history compression
 
 ## Requirements
 
 ### Hardware
-- **RAM**: 16GB minimum
-- **GPU**: NVIDIA GPU with 4GB+ VRAM (recommended)
+- **RAM**: 8GB minimum (16GB recommended)
+- **GPU**: NVIDIA (with CUDA) or any GPU supported by llama-cpp-python (optional, runs on CPU too)
+- **VRAM**: 4GB+ recommended for faster inference
 
 ### Software
 - Python 3.9+
-- CUDA Toolkit (for GPU acceleration)
+- Linux (tested on Arch/CachyOS)
 - PortAudio (for audio I/O)
+- espeak-ng (required for Kokoro TTS)
 
 ## Installation
 
@@ -50,7 +52,7 @@ python model_downloader.py
 ## Usage
 
 ```bash
-python run_qwen_assistant.py
+python run_assistant.py
 ```
 
 **How it works:**
@@ -75,7 +77,7 @@ python run_qwen_assistant.py
 
 ```
 Local-Assistant/
-├── run_qwen_assistant.py   # Main application
+├── run_assistant.py        # Main lightweight application (Llama-3.2 + Kokoro)
 ├── model_downloader.py     # Auto-downloads required models
 ├── search_utils.py         # Web search utilities
 ├── cli_animations.py       # CLI animations
@@ -91,14 +93,18 @@ Local-Assistant/
 
 ## Future Scope
 
-This project aims to become **the native AI assistant for Linux machines** — just like Copilot on Windows, Siri on macOS/iOS, and Google Assistant on Android. The goal is to provide Linux users with a fully local, privacy-respecting, voice-controlled assistant that deeply integrates with the Linux desktop environment.
+This project aims to become **the native AI assistant for Linux machines** — a truly universal "Copilot" for the open-source world. Unlike cloud-based assistants (Siri, Gemini, Copilot), this project focuses on:
 
-Planned features:
-- Desktop environment integration (notifications, system controls)
-- Vision capabilities with VLM models
-- Plugin system for community extensions
-- Multi-language support
-- Wake word detection for hands-free activation
+1.  **Privacy First**: 100% local processing. Your voice and data never leave your machine.
+2.  **OS Integration**: Deep integration with the Linux desktop (KDE, GNOME, Hyprland) to control settings, windows, and workflow.
+3.  **Universal Compatibility**: Designed to run on everything from powerful workstations to low-power handhelds (Steam Deck, ROG Ally) and older laptops.
+
+**Planned Roadmap:**
+- **Vision Capabilities**: Integration of Vision-Language Models (VLM) like Qwen2-VL to "see" your screen and answer questions about it.
+- **Hands-Free Activation**: efficient wake-word detection (e.g., "Hey Assistant") running in the background.
+- **Desktop Awareness**: Ability to interact with running applications, move windows, and automate GUI tasks.
+- **Plugin System**: A modular API for community-created tools and skills.
+- **Multi-Language Support**: Expanding beyond English for global accessibility.
 
 ## License
 

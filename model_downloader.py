@@ -16,11 +16,11 @@ MODELS_DIR = os.path.join(SCRIPT_DIR, "models")
 
 # Model configurations
 MODELS_CONFIG = {
-    "qwen2.5-3b-instruct": {
-        "type": "huggingface",
-        "repo_id": "Qwen/Qwen2.5-3B-Instruct",
-        "required_files": ["config.json", "model.safetensors.index.json"],
-        "description": "Qwen2.5-3B-Instruct - Main LLM for conversation"
+    "llama-3.2-3b-instruct": {
+        "type": "gguf",
+        "repo_id": "bartowski/Llama-3.2-3B-Instruct-GGUF",
+        "filename": "Llama-3.2-3B-Instruct-Q4_K_M.gguf",
+        "description": "Llama-3.2-3B-Instruct - Lightweight LLM optimized for tool calling"
     },
     "piper": {
         "type": "piper",
@@ -29,8 +29,14 @@ MODELS_CONFIG = {
         "model_file": "en_US-amy-medium.onnx",
         "config_file": "en_US-amy-medium.onnx.json",
         "description": "Piper TTS - Text-to-speech model"
+    },
+    "kokoro": {
+        "type": "kokoro",
+        "description": "Kokoro TTS - 82M parameter high-quality TTS (auto-downloads on first use)",
+        "notes": "Requires espeak-ng system package. Model weights download automatically from HuggingFace."
     }
 }
+
 
 
 def print_status(message, status_type="info"):
@@ -192,12 +198,17 @@ def download_piper_model(target_dir: str):
 
 def check_model_exists(model_name: str) -> bool:
     """Check if a model exists and has required files."""
+    config = MODELS_CONFIG.get(model_name, {})
+    
+    # For GGUF models, check if the single .gguf file exists
+    if config.get("type") == "gguf":
+        model_path = os.path.join(MODELS_DIR, model_name, config.get("filename", ""))
+        return os.path.exists(model_path)
+    
     model_dir = os.path.join(MODELS_DIR, model_name)
     
     if not os.path.exists(model_dir):
         return False
-    
-    config = MODELS_CONFIG.get(model_name, {})
     
     # For Hugging Face models, check for required files
     if config.get("type") == "huggingface":
@@ -217,50 +228,57 @@ def check_model_exists(model_name: str) -> bool:
     return len(os.listdir(model_dir)) > 0
 
 
+def download_gguf_model(repo_id: str, filename: str, target_dir: str, model_name: str) -> bool:
+    """Download a single GGUF file from Hugging Face."""
+    print_status(f"Downloading {model_name} (GGUF)...", "download")
+    print_status(f"Repository: {repo_id}", "info")
+    print_status(f"File: {filename}", "info")
+    
+    os.makedirs(target_dir, exist_ok=True)
+    target_path = os.path.join(target_dir, filename)
+    
+    try:
+        from huggingface_hub import hf_hub_download
+        
+        hf_hub_download(
+            repo_id=repo_id,
+            filename=filename,
+            local_dir=target_dir,
+            local_dir_use_symlinks=False,
+            resume_download=True
+        )
+        print_status(f"Successfully downloaded {model_name}!", "success")
+        return True
+        
+    except ImportError:
+        print_status("huggingface_hub not installed. Installing...", "warning")
+        try:
+            subprocess.run([sys.executable, "-m", "pip", "install", "huggingface_hub"], 
+                          check=True, capture_output=True)
+            from huggingface_hub import hf_hub_download
+            hf_hub_download(
+                repo_id=repo_id,
+                filename=filename,
+                local_dir=target_dir,
+                local_dir_use_symlinks=False,
+                resume_download=True
+            )
+            print_status(f"Successfully downloaded {model_name}!", "success")
+            return True
+        except Exception as e:
+            print_status(f"Failed to download {model_name}: {e}", "error")
+            return False
+    except Exception as e:
+        print_status(f"Failed to download {model_name}: {e}", "error")
+        return False
+
+
 def ensure_models_exist():
     """
-    Check and download all required models.
+    Check and download all required models (Llama-3.2 + Piper).
     Returns True if all models are ready, False otherwise.
     """
-    print_status("Checking required models...", "info")
-    
-    os.makedirs(MODELS_DIR, exist_ok=True)
-    all_success = True
-    
-    for model_name, config in MODELS_CONFIG.items():
-        model_dir = os.path.join(MODELS_DIR, model_name)
-        
-        if check_model_exists(model_name):
-            print_status(f"✓ {model_name}: Already downloaded", "success")
-            continue
-        
-        print_status(f"✗ {model_name}: Not found, downloading...", "warning")
-        print_status(f"  {config.get('description', '')}", "info")
-        
-        if config["type"] == "huggingface":
-            success = download_huggingface_model(
-                repo_id=config["repo_id"],
-                target_dir=model_dir,
-                model_name=model_name
-            )
-        elif config["type"] == "piper":
-            success = download_piper_model(model_dir)
-        else:
-            print_status(f"Unknown model type: {config['type']}", "error")
-            success = False
-        
-        if not success:
-            all_success = False
-    
-    # Note: Whisper models are handled by openai-whisper library automatically
-    print_status("Note: Whisper model is downloaded automatically by openai-whisper library", "info")
-    
-    if all_success:
-        print_status("All models are ready!", "success")
-    else:
-        print_status("Some models failed to download. Please check the errors above.", "error")
-    
-    return all_success
+    return ensure_llama_models_exist()
 
 
 def get_model_status():
@@ -281,6 +299,66 @@ def get_model_status():
     return status
 
 
+def ensure_llama_models_exist() -> bool:
+    """
+    Ensure only the Llama-3.2-3B and Piper models are downloaded.
+    This is for the new lightweight assistant (run_assistant.py).
+    Returns True if ready, False otherwise.
+    """
+    print_status("Checking models for Llama-3.2 assistant...", "info")
+    
+    os.makedirs(MODELS_DIR, exist_ok=True)
+    all_success = True
+    
+    # Only download llama and piper
+    required_models = ["llama-3.2-3b-instruct", "piper"]
+    
+    for model_name in required_models:
+        config = MODELS_CONFIG.get(model_name)
+        if not config:
+            print_status(f"Model config not found: {model_name}", "error")
+            all_success = False
+            continue
+        
+        model_dir = os.path.join(MODELS_DIR, model_name)
+        
+        if check_model_exists(model_name):
+            print_status(f"✓ {model_name}: Ready", "success")
+            continue
+        
+        print_status(f"✗ {model_name}: Downloading...", "warning")
+        
+        if config["type"] == "gguf":
+            success = download_gguf_model(
+                repo_id=config["repo_id"],
+                filename=config["filename"],
+                target_dir=model_dir,
+                model_name=model_name
+            )
+        elif config["type"] == "piper":
+            success = download_piper_model(model_dir)
+        else:
+            print_status(f"Unknown model type: {config['type']}", "error")
+            success = False
+        
+        if not success:
+            all_success = False
+    
+    # Note about Whisper
+    print_status("Note: Whisper model will be downloaded on first use", "info")
+    
+    if all_success:
+        print_status("Llama-3.2 assistant models ready!", "success")
+    
+    return all_success
+
+
+def get_llama_model_path() -> str:
+    """Get the path to the Llama GGUF model file."""
+    config = MODELS_CONFIG.get("llama-3.2-3b-instruct", {})
+    return os.path.join(MODELS_DIR, "llama-3.2-3b-instruct", config.get("filename", ""))
+
+
 if __name__ == "__main__":
     print("\n" + "=" * 60)
     print("  Local-Assistant Model Downloader")
@@ -290,7 +368,7 @@ if __name__ == "__main__":
     
     print("\n" + "=" * 60)
     if success:
-        print("  All models ready! You can now run: python run_qwen_assistant.py")
+        print("  All models ready! You can now run: python run_assistant.py")
     else:
         print("  Some downloads failed. Please check errors and retry.")
     print("=" * 60 + "\n")
