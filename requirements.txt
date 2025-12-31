@@ -7,7 +7,7 @@ openai-whisper
 sounddevice
 numpy<2.4
 piper-tts
-duckduckgo-search
+ddgs
 psutil>=5.9.0
 GPUtil>=1.4.0
 soundfile

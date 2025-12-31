@@ -10,12 +10,12 @@ logger = logging.getLogger("tools.web")
 
 # Try to import DuckDuckGo search library
 try:
-    from duckduckgo_search import DDGS
+    from ddgs import DDGS
 except ImportError:
     try:
-        from ddgs import DDGS
+        from duckduckgo_search import DDGS
     except ImportError:
-        logger.error("duckduckgo-search package not installed. Run: pip install duckduckgo-search")
+        logger.error("ddgs package not installed. Run: pip install ddgs")
         DDGS = None
 
 
